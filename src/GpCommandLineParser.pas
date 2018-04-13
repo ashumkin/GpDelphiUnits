@@ -507,6 +507,7 @@ var
   iValue: integer;
   prop  : TRttiProperty;
   typ   : TRttiType;
+  bValue: Boolean;
 begin
   Result := true;
   ctx := TRttiContext.Create;
@@ -523,6 +524,11 @@ begin
           Exit(false);
         prop.SetValue(FInstance, iValue);
       end;
+    stBoolean:
+      begin
+        bValue := StrToBoolDef(value, False);
+        prop.SetValue(FInstance, bValue);
+      end
     else
       raise Exception.Create('TSwitchData.SetValue: Not supported');
   end;
