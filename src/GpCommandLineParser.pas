@@ -119,10 +119,10 @@ type
   ///	</summary>
   CLPDefaultAttribute = class(TCustomAttribute)
   strict private
-    FDefaultValue: string;
+    FDefaultValue: TValue;
   public
-    constructor Create(const value: string); overload;
-    property DefaultValue: string read FDefaultValue;
+    constructor Create(const value: TValue); overload;
+    property DefaultValue: TValue read FDefaultValue;
   end; { CLPDefaultAttribute }
 
   ///	<summary>
@@ -219,6 +219,8 @@ type
     constructor Create(const errInfo: TCLPErrorInfo);
   end; { ECLPConfigurationError }
 
+  ECLPUnsupportedSwtchDefaultValueType = class(Exception);
+
 ///	<summary>
 ///	  Returns global parser instance. Not thread-safe.
 ///	</summary>
@@ -272,7 +274,7 @@ type
 
   TSwitchData = class
   strict private
-    FDefaultValue : string;
+    FDefaultValue : TValue;
     FDescription  : string;
     FInstance     : TObject;
     FLongNames    : TCLPLongNames;
@@ -289,12 +291,12 @@ type
   public
     constructor Create(instance: TObject; const propertyName, name: string;
       const longNames: TCLPLongNames; switchType: TCLPSwitchType; position: integer;
-      options: TCLPSwitchOptions; const defaultValue, description, paramName: string);
+      options: TCLPSwitchOptions; const defaultValue: TValue; const description, paramName: string);
     function  AppendValue(const value, delim: string; doQuote: boolean): boolean;
     procedure Enable;
     function  GetValue: string;
-    function  SetValue(const value: string): boolean;
-    property DefaultValue: string read FDefaultValue;
+    function  SetValue(const value: TValue): boolean;
+    property DefaultValue: TValue read FDefaultValue;
     property Description: string read FDescription;
     property LongNames: TCLPLongNames read FLongNames;
     property Name: string read FName;
@@ -322,7 +324,8 @@ type
   strict protected
     procedure AddSwitch(instance: TObject; const propertyName, name: string; const longNames:
       TCLPLongNames; switchType: TCLPSwitchType; position: integer; options:
-      TCLPSwitchOptions; const defaultValue, description, paramName: string);
+      TCLPSwitchOptions; const defaultValue: TValue;
+      const description, paramName: string);
     function  CheckAttributes: boolean;
     function  GetCommandLine: string;
     function  GetErrorInfo: TCLPErrorInfo; inline;
@@ -396,7 +399,7 @@ end; { CLPLongNameAttribute.Create }
 
 { CLPDefaultAttribute }
 
-constructor CLPDefaultAttribute.Create(const value: string);
+constructor CLPDefaultAttribute.Create(const value: TValue);
 begin
   inherited Create;
   FDefaultValue := value;
@@ -434,7 +437,7 @@ end; { TCLPLongName.Create }
 
 constructor TSwitchData.Create(instance: TObject; const propertyName, name: string; const
   longNames: TCLPLongNames; switchType: TCLPSwitchType; position: integer; options:
-  TCLPSwitchOptions; const defaultValue, description, paramName: string);
+  TCLPSwitchOptions; const defaultValue: TValue; const description, paramName: string);
 begin
   inherited Create;
   FInstance := instance;
@@ -500,37 +503,37 @@ begin
     Result := value;
 end; { TSwitchData.Quote }
 
-function TSwitchData.SetValue(const value: string): boolean;
+function TSwitchData.SetValue(const value: TValue): boolean;
 var
-  c     : integer;
   ctx   : TRttiContext;
-  iValue: integer;
   prop  : TRttiProperty;
   typ   : TRttiType;
-  bValue: Boolean;
 begin
   Result := true;
   ctx := TRttiContext.Create;
   typ := ctx.GetType(FInstance.ClassType);
   prop := typ.GetProperty(FPropertyName);
 
-  case SwitchType of
-    stString:
-      prop.SetValue(FInstance, value);
-    stInteger:
-      begin
-        Val(value, iValue, c);
-        if c <> 0 then
-          Exit(false);
-        prop.SetValue(FInstance, iValue);
-      end;
-    stBoolean:
-      begin
-        bValue := StrToBoolDef(value, False);
-        prop.SetValue(FInstance, bValue);
-      end
-    else
-      raise Exception.Create('TSwitchData.SetValue: Not supported');
+  try
+    case SwitchType of
+      stString:
+        prop.SetValue(FInstance, value);
+      stInteger:
+        begin
+          prop.SetValue(FInstance, value);
+        end;
+      stBoolean:
+        begin
+          prop.SetValue(FInstance, value);
+        end
+      else
+        raise ECLPUnsupportedSwtchDefaultValueType.Create('TSwitchData.SetValue: Not supported');
+    end;
+  except
+    on E: ECLPUnsupportedSwtchDefaultValueType do
+      raise;
+  else
+    // suppress;
   end;
   FProvided := true;
 end; { TSwitchData.SetValue }
@@ -554,7 +557,8 @@ end; { TGpCommandLineParser.Destroy }
 
 procedure TGpCommandLineParser.AddSwitch(instance: TObject; const propertyName, name:
   string; const longNames: TCLPLongNames; switchType: TCLPSwitchType; position: integer;
-  options: TCLPSwitchOptions; const defaultValue, description, paramName: string);
+  options: TCLPSwitchOptions; const defaultValue: TValue;
+  const description, paramName: string);
 var
   data    : TSwitchData;
   i       : integer;
@@ -805,7 +809,7 @@ end; { TGpCommandLineParser.Parse }
 procedure TGpCommandLineParser.ProcessAttributes(instance: TObject; const prop: TRttiProperty);
 var
   attr       : TCustomAttribute;
-  default    : string;
+  default    : TValue;
   description: string;
   longNames  : TCLPLongNames;
   name       : string;
@@ -870,7 +874,7 @@ begin
   Result := true;
 
   for data in FSwitchList do
-    if data.DefaultValue <> '' then
+    if data.DefaultValue.ToString <> '' then
       data.SetValue(data.DefaultValue);
 
   position := 1;
